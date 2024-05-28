@@ -1,0 +1,622 @@
+---
+title: "ML Final Project"
+output: html_notebook
+---
+
+# For the Final Project, we have chosen Real/Fake Job Posting Prediction as our data set from Kaggle.
+
+# Here's the link of our dataset: https://www.kaggle.com/datasets/shivamb/real-or-fake-fake-jobposting-prediction
+
+# About Dataset:
+# This dataset contains 18K job descriptions out of which about 800 are fake. The data consists of both textual information and meta-information about the jobs. The dataset can be used to create classification models which can learn the job descriptions which are fraudulent.
+
+```{r}
+# Let's read our data
+data = read.csv("C:/Users/kriti/Downloads/fake_job_postings.csv", header = TRUE, na.strings = c("","NA"))
+head(data)
+```
+
+
+```{r}
+table(data$fraudulent)
+#taking  0 : 2000 , 1 : 866
+sample_0 <- data[data$fraudulent == 0, ]
+set.seed(123)
+sample_0 <- sample_0[sample(nrow(sample_0), 2000), ]
+sample_1 <- data[data$fraudulent == 1, ]
+data <- rbind(sample_0, sample_1)
+table(data$fraudulent)
+```
+```{r}
+data = data[sample(nrow(data)), ]
+```
+
+```{r}
+index <- createDataPartition(y = data$fraudulent , p=0.9 , list = FALSE)
+train_data <- data[index , ]
+test_data <- data[-index , ]
+```
+# Our target variable is to find which job description are fraudulent or real. Let's check if it's imbalanced or not
+
+```{r}
+#train_data
+count = table(train_data$fraudulent)
+# Using Bar plot
+barplot(count, 
+        main = "Count of Fraudulent vs. Non-Fraudulent (Train Data)",
+        xlab = "Fraudulent",
+        ylab = "Count",
+        col = c("lightblue", "pink"), 
+        legend = c("Not Fraud", "Fraud"))
+
+#test_data
+count = table(test_data$fraudulent)
+# Using Bar plot
+barplot(count, 
+        main = "Count of Fraudulent vs. Non-Fraudulent (Test Data)",
+        xlab = "Fraudulent",
+        ylab = "Count",
+        col = c("lightblue", "pink"), 
+        legend = c("Not Fraud", "Fraud"))
+```
+# Here we can see that it's highly imbalanced.
+
+# Our steps to proceed:
+1. Learning the data
+2. Data Cleaning ( handling Missing values, deleting not-required features )
+3. Visualization Plots, graphs to understand variables
+4. Feature Engineering ( Creating new features or transforming existing ones )
+6. Data Pre-processing ( Tokenization, lemmatization, Text-Vectorization, train-test split )
+7. Model Selection and Training
+8. Model Evaluation
+9. Model Fine-tuning, final model selection
+10. Model Deployment
+
+
+# Let's start with learning about the dataset:
+
+```{r}
+summary(train_data)
+summary(test_data)
+```
+# Categorical variables are:
+1. title
+2. location
+3. department
+4. salary_range
+5. company_profile
+6. description
+7. requirements
+8. benefits
+9. employment_type
+10. required_experience
+11. required_education
+12. industry
+13. function
+
+# Numerical variables are:
+1. job_id
+2. telecommuting
+3. has_company_logo
+4. has_questions
+
+# The last variable - fraudulent is a numerical binary variable to be predicted.
+
+```{r}
+# Let's check for null values
+colSums(is.na(data))
+```
+Here, We can see that many columns have null values, let's handle them:
+
+
+```{r}
+# Calculating the correlation for: department, salary_range,function.
+##department
+#Train Data
+train_data$department = as.numeric(as.factor(train_data$department))
+train_data$department = ifelse(is.na(train_data$department), 0, train_data$department)
+correlation_matrix = cor(train_data$department, train_data$fraudulent)
+correlation_matrix # -0.07768365
+
+#Test_data
+test_data$department = as.numeric(as.factor(test_data$department))
+test_data$department = ifelse(is.na(test_data$department), 0, test_data$department)
+correlation_matrix = cor(test_data$department, test_data$fraudulent)
+correlation_matrix #-0.02963282
+
+##salary Range
+#Train Data
+train_data$salary_range = as.numeric(as.factor(train_data$salary_range))
+train_data$salary_range = ifelse(is.na(train_data$salary_range), 0, train_data$salary_range)
+correlation_matrix = cor(train_data$salary_range, train_data$fraudulent)
+correlation_matrix #0.1017228
+
+#Test Data
+test_data$salary_range = as.numeric(as.factor(test_data$salary_range))
+test_data$salary_range = ifelse(is.na(test_data$salary_range), 0, test_data$salary_range)
+correlation_matrix = cor(test_data$salary_range, test_data$fraudulent)
+correlation_matrix #0.124986
+
+##function. 
+#Train_data
+train_data$function. = as.numeric(as.factor(train_data$function.))
+train_data$function. = ifelse(is.na(train_data$function.), 0, train_data$function.)
+correlation_matrix = cor(train_data$function., train_data$fraudulent)
+correlation_matrix #-0.1476297
+
+#Test Data
+test_data$function. = as.numeric(as.factor(test_data$function.))
+test_data$function. = ifelse(is.na(test_data$function.), 0, test_data$function.)
+correlation_matrix = cor(test_data$function., test_data$fraudulent)
+correlation_matrix #-0.180516
+# The correlation value is very far away from the range -1 to 1, therefore it shows weak relation and we'll remove these variables from our dataset.
+train_data = subset(train_data, select = -c(salary_range,department, function.))
+test_data = subset(test_data, select = -c(salary_range,department, function.))
+```
+Let's impute the missing values:
+
+No numerical variables have null values.
+
+# Let's handle the missing values by filling the NA's with an empty strings as this is considered as the best way until now because we would be combining these variables anyhow into one variable and then work upon them.
+
+
+
+
+```{r}
+
+data = data.frame(
+  lapply(train_data, function(x) ifelse(is.na(x), '', x))
+)
+colSums(is.na(train_data))
+```
+
+# Let's understand our numerical variables:
+
+1. job_id
+2. telecommuting
+3. has_company_logo
+4. has_questions
+
+```{r}
+
+count = table(train_data$telecommuting)
+barplot(count,
+        main = "Count Plot for telecommuting",
+        xlab = "id",
+        ylab = "Count",
+        col = "skyblue",
+        border = "black"
+)
+
+count = table(train_data$has_company_logo)
+barplot(count,
+        main = "Count Plot for company_logo",
+        xlab = "id",
+        ylab = "Count",
+        col = "skyblue",
+        border = "black"
+)
+
+count = table(train_data$has_questions)
+barplot(count,
+        main = "Count Plot for questions",
+        xlab = "id",
+        ylab = "Count",
+        col = "skyblue",
+        border = "black"
+)
+```
+
+There is high imbalance of data for telecommuting variable. 
+
+# let's check their correlation with the target variable:
+
+```{r}
+# For job_id
+correlation <- cor(train_data$job_id, train_data$fraudulent)
+correlation #0.1557648
+
+# For telecommuting
+correlation <- cor(train_data$telecommuting, train_data$fraudulent)
+correlation #0.06998303
+
+# For has_company_logo
+correlation <- cor(train_data$has_company_logo, train_data$fraudulent)
+correlation #-0.4789252
+
+# For has_questions
+correlation <- cor(train_data$has_questions, train_data$fraudulent)
+correlation #-0.2056319
+
+# Removing these three variable from the data set
+train_data = subset(train_data, select = -c(job_id,telecommuting,has_questions))
+test_data = subset(test_data, select = -c(job_id,telecommuting,has_questions))
+```
+# Job_id correlation value indicates a weak relationship and hence, we can remove this because even if we critical think, job_id doesn't help us to understand if the job is fraudulent or not. It justs act as a unique identifier in terms of database term.
+
+# Talking about telecommuting, has_questions variable we should remove them as well. I think it's better to keep has_company_logo variable for now as it atleast gives us a number close to -1.
+
+
+```{r}
+# Let's create a function to perform the chi-square test
+chi_test = function(var, target) {
+  chi_sq = chisq.test(var, target)
+  return(chi_sq)
+}
+cat_var = c(
+    "title",
+    "location",
+    "company_profile",
+    "description",
+    "requirements",
+    "benefits",
+    "employment_type",
+    "required_experience",
+    "required_education",
+    "industry"
+)
+# Perform chi-square tests for each variable and print the results
+for (var in cat_var) {
+  chi_sq = chi_test(train_data[[var]], train_data$fraudulent)
+  var
+  print(chi_sq)
+}
+```
+We can see that the p-values are < 0.05, therefore we'll accept that these are significant variables.
+
+```{r}
+char_vars = sapply(train_data, is.character)
+# Convert those variables to factor
+#data[char_vars] = lapply(data[char_vars], as.factor)
+```
+
+# Let's understand a few more variables through plotting the graphs for them:
+
+```{r}
+#train_data
+# Plotting the count for required_experience in the data:
+experience_counts = table(train_data$required_experience)
+top_experience_index = head(order(experience_counts, decreasing = TRUE), 10)
+top_counts = experience_counts[top_experience_index]
+barplot(top_counts,
+        main = "Count Plot for Experience",
+        xlab = "Experience",
+        ylab = "Count",
+        col = "skyblue",
+        border = "black",
+        las = 2  
+)
+```
+We can deduce that most values are null and then the hiring is happening more for senior level and entry level as compared to other types of experience needed.
+
+```{r}
+# Let's extract country from the location and check it's count
+train_data$country <- sub(",.*", "", train_data$location)
+test_data$country <- sub(",.*", "", test_data$location)
+
+# Plotting the count for 10 highest counts countries from the data:
+country_counts = table(train_data$country)
+top_countries_index = head(order(country_counts, decreasing = TRUE), 10)
+top_counts = country_counts[top_countries_index]
+barplot(top_counts,
+        main = "Count Plot for Countries",
+        xlab = "Countries",
+        ylab = "Count",
+        col = "skyblue",
+        border = "black",
+        las = 2  
+)
+#train_data$country = as.factor(train_data$country)
+```
+US has the most openings.
+
+```{r}
+# Plotting the count for highest counts education from the data:
+ed_counts = table(train_data$required_education)
+ed_index = head(order(ed_counts, decreasing = TRUE), 5)
+top_counts = ed_counts[ed_index]
+barplot(top_counts,
+        main = "Count Plot for Education Level",
+        xlab = "Education",
+        ylab = "Count",
+        col = "skyblue",
+        border = "black",
+        las = 2  
+)
+```
+Again for this, Bachelor's degree requirement is more.
+
+# Let's try to find the most important features among these text variables of our dataset, to combine them 
+
+```{r}
+chi_test <- function(var, target) {
+  chi_sq <- chisq.test(var, target)
+  return(chi_sq$statistic)
+}
+
+cat_var <- c(
+  "title",
+  "country",
+  "company_profile",
+  "description",
+  "requirements",
+  "benefits",
+  "employment_type",
+  "required_experience",
+  "required_education",
+  "industry",
+  "has_company_logo"
+)
+
+# Initializing an empty vector to store chi-square statistics for each variable
+chi_sq_stats <- numeric(length(cat_var))
+
+# Performing chi-square tests for each variable and storing the results
+for (i in seq_along(cat_var)) {
+  chi_sq_stats[i] <- chi_test(train_data[[cat_var[i]]], train_data$fraudulent)
+}
+
+# New data frame with variable names and their corresponding chi-square statistics created
+chi_sq_df <- data.frame(variable = cat_var, chi_sq_statistic = chi_sq_stats)
+
+# Ordering based on chi-square statistics in descending order
+chi_sq_df <- chi_sq_df[order(chi_sq_df$chi_sq_statistic, decreasing = TRUE), ]
+chi_sq_df
+```
+We can discard country, location, required_education ,required_experience ,employment_type, location from the dataset.
+
+```{r}
+#train_data
+train_data = subset(train_data, select = -c(country, location, required_education ,required_experience ,employment_type, location,has_company_logo ))
+train_data
+#test_data
+#train_data
+test_data = subset(test_data, select = -c(country, location, required_education ,required_experience ,employment_type, location,has_company_logo ))
+test_data
+```
+
+# Now, let's combine all our variables: title, company_profile, description, requirements, benefits, industry:
+
+```{r}
+train_data$text <- paste(train_data$title, train_data$company_profile, train_data$description, train_data$requirements, train_data$benefits, train_data$industry, sep = " ")
+
+test_data$text <- paste(test_data$title, test_data$company_profile, test_data$description, test_data$requirements, test_data$benefits, test_data$industry, sep = " ")
+
+# Removing these variables:
+#train_data
+train_data = subset(train_data, select = -c(title, company_profile, description, requirements,benefits,industry))
+
+#test_data
+test_data = subset(test_data, select = -c(title, company_profile, description, requirements,benefits,industry))
+```
+# Randomizing the order:
+
+```{r}
+set.seed(123)
+train_data = train_data[sample(nrow(train_data)), ]
+test_data = test_data[sample(nrow(test_data)), ]
+
+```
+# Let's perform some pre-processing
+
+```{r}
+library(tm)
+library(wordcloud)
+library(SnowballC)
+text_corpus_train = VCorpus(VectorSource(train_data$text))
+text_corpus_test = VCorpus(VectorSource(test_data$text))
+```
+
+# Cleaning the corpus
+```{r}
+#train_data
+text_corpus_clean_train <- tm_map(text_corpus_train, content_transformer(tolower)) # Convert to lowercase
+text_corpus_clean_train <- tm_map(text_corpus_clean_train, removeNumbers) # Remove numbers
+text_corpus_clean_train <- tm_map(text_corpus_clean_train,removeWords, stopwords()) # Remove stop words
+text_corpus_clean_train <- tm_map(text_corpus_clean_train, removePunctuation) # Remove punctuation
+text_corpus_clean_train <- tm_map(text_corpus_clean_train, stemDocument) # Stemming
+text_corpus_clean_train <- tm_map(text_corpus_clean_train, stripWhitespace) # Remove extra whitespaces
+
+#test_data
+text_corpus_clean_test <- tm_map(text_corpus_test, content_transformer(tolower)) # Convert to lowercase
+text_corpus_clean_test <- tm_map(text_corpus_clean_test, removeNumbers) # Remove numbers
+text_corpus_clean_test <- tm_map(text_corpus_clean_test,removeWords, stopwords()) # Remove stop words
+text_corpus_clean_test <- tm_map(text_corpus_clean_test, removePunctuation) # Remove punctuation
+text_corpus_clean_test <- tm_map(text_corpus_clean_test, stemDocument) # Stemming
+text_corpus_clean_test <- tm_map(text_corpus_clean_test, stripWhitespace) # Remove extra whitespaces
+```
+
+# Creating Wordclouds:
+```{r}
+#train_data
+wordcloud(text_corpus_clean_train,min.freq = 50, random.order = FALSE)
+fraudulent = subset(text_corpus_clean_train, train_data$fraudulent == 1)
+non_fraudulent = subset(text_corpus_clean_train, train_data$fraudulent == 0)
+wordcloud(fraudulent, max.words = 20, scale = c(3, 0.5))
+wordcloud(non_fraudulent, max.words = 20, scale = c(3, 0.5))
+
+#test_data
+wordcloud(text_corpus_clean_test,min.freq = 50, random.order = FALSE)
+fraudulent = subset(text_corpus_clean_test, test_data$fraudulent == 1)
+non_fraudulent = subset(text_corpus_clean_train, test_data$fraudulent == 0)
+wordcloud(fraudulent, max.words = 20, scale = c(3, 0.5))
+wordcloud(non_fraudulent, max.words = 20, scale = c(3, 0.5))
+```
+
+# Creating the document term matrix: 
+```{r}
+#train_data
+train_data_dtm = DocumentTermMatrix(text_corpus_clean_train)
+train_data_dtm 
+#test_data
+test_data_dtm = DocumentTermMatrix(text_corpus_clean_test)
+test_data_dtm 
+```
+# Let's perform train-test split, we'll be taking 70% data for training and 30% for testing.
+```{r}
+index = round(nrow(train_data_dtm)*0.70)
+train_dtm = train_data_dtm[1:index,]
+test_dtm = train_data_dtm[(index+1):nrow(train_data_dtm),]
+
+train_label = train_data[1:index,]$fraudulent
+test_label = train_data[(index+1):nrow(train_data),]$fraudulent
+
+#checking the length. 
+nrow(train_dtm)
+length(train_label)
+nrow(test_dtm)
+length(test_label)
+```
+```{r}
+#simple benchmark model
+
+#sum(test_data$fraudulent == 1)
+length(test_data$fraudulent)
+vector <- rep(1 , 286)
+pred_table <- table(vector , test_data$fraudulent)
+pred_table 
+total <- 193 + 93
+TP<-0
+TN<-193  
+FP<-0
+FN<-93
+accuracy <- (TP + TN) / total
+accuracy #0.6748252
+```
+# Creating frequency terms using our document term matrix data
+```{r}
+#train_data
+textFreqWords_train = findFreqTerms(train_dtm,10)
+train_dtm_freq = train_dtm[,textFreqWords_train]
+train_dtm_freq
+
+#Test_data
+textFreqWords_test = findFreqTerms(test_dtm,10)
+test_dtm_freq = test_dtm[,textFreqWords_test]
+test_dtm_freq
+
+convertCounts = function(x) {
+  x = ifelse(x > 0, "Yes", "No")
+}
+
+train_text = apply(train_dtm_freq, MARGIN = 2, convertCounts)
+test_text = apply(test_dtm_freq, MARGIN = 2, convertCounts)
+
+```
+# The Models we'll be using here are:
+# 1. Naive Bayes
+# 2. Logistic Regression ( taking too long )
+# 4. Decision Trees
+# 5. Gradient Boosting Machine
+# 6. Random Forest
+# 7. RNN ( LSTM )
+
+
+# Let's start with Naive Bayes:
+
+```{r}
+library(e1071)
+library(gmodels)
+
+testClassifier = naiveBayes(train_text,train_label)
+naive_prediction = predict(testClassifier,test_text)
+
+confusion_matrix <- CrossTable(naive_prediction,test_label, prop.chisq = FALSE, prop.t = FALSE,dnn = c('predicted', 'actual'))
+
+#calculations for inverse of confusion matrix to find out the fraud cases. 
+confusion_matrix
+total <- 210+462+75+27
+TP<-210
+TN<-462
+FP<-75
+FN<-27
+
+accuracy <- (TP + TN) / total
+accuracy #0.8682171
+recall <- TP/(TP+FN)
+recall # 0.8860759
+precision<- TP/(TP+FP)
+precision #0.7368421
+F1_score <- 2*((precision*recall)/(precision+recall))
+F1_score #0.8045977
+```
+```{r}
+train_data_df <- as.data.frame(train_text)
+test_data_df <- as.data.frame(test_text)
+
+
+str(train_label)
+ <- as.factor(textTrainLabels)
+textTestLabels <- as.factor(textTestLabels)
+```
+
+
+# Decision Trees
+
+```{r}
+library(rpart)
+tree_model <- rpart( train_label~ ., data = train_data_df, method = "class")
+predictions <- predict(tree_model, newdata = test_data_df, type = "class")
+confusion_matrix <- table(predictions, test_label)
+confusion_matrix
+```
+# Gradient Boosting Machine
+
+```{r}
+set.seed(1)
+library(caret)
+library(gbm)
+train_control = trainControl(method = "cv", number = 5)
+gbm_model <- train(as.formula(textTrainLabels ~ .,), 
+                   data = textTrain_df, 
+                   method = "gbm",
+                   trControl = train_control,
+                   tuneLength = 5)  # Number of models to evaluate
+
+# Print the trained model
+print(gbm_model)
+
+# predicting our model
+gbm_prediction = predict(gbm_model, textTest_df)
+
+# Creating a confusion matrix
+table(gbm_prediction, textTest_df)
+```
+# Random Forest
+
+```{r, cache=TRUE}
+set.seed(1)
+library(caret)
+library(gbm)
+train_control = trainControl(method = "cv", number = 3)
+rf_model <- train(as.formula(textTrainLabels ~ .,), 
+                  data = textTrain_df, 
+                  method = "rf",
+                  trControl = train_control,
+                  tuneLength = 3,  
+                  importance = TRUE)
+
+print(rf_model)
+
+# predicting our model
+random_forest_prediction = predict(rf_model, textTest_df)
+
+# Creating a confusion matrix
+table(random_forest_prediction, textTest_df)
+```
+
+
+```{r}
+# handle imbalance dataset
+# Add benchmark model
+```
+
+
+
+
+
+
+
+
+
+
